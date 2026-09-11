@@ -12,31 +12,45 @@ cover the same ground for Linux and Windows Server.
 
 ## Status
 
-Early days — a first batch of scripts and docs, growing incrementally the
-same way the Linux and Windows companions did. Not yet at their depth.
+Early days — growing incrementally the same way the Linux and Windows
+companions did. Not yet at their depth.
 
 ## Layout
 
 ```
 sysadmin-macos/
 ├── scripts/
-│   ├── disk-usage-report.sh      # filesystem usage + largest dirs, threshold alerting
-│   ├── user-mgmt.sh              # create/disable/enable/remove local users
-│   ├── service-health-check.sh   # check & kickstart-restart launchd jobs
-│   ├── update-and-patch.sh       # softwareupdate + brew wrapper, with logging
-│   ├── network-diagnostics.sh    # interfaces, routing, DNS, reachability
-│   ├── security-audit.sh         # SIP, Gatekeeper, FileVault, firewall, admin group
-│   ├── package-inventory.sh      # apps + Homebrew + pkg receipts, diff baselines
-│   ├── pending-reboot-check.sh   # detect whether a software update needs a restart
-│   ├── time-sync-check.sh        # network time sync status + offset threshold
-│   └── backup-verify.sh          # assert a Time Machine backup exists and is recent
+│   ├── disk-usage-report.sh       # filesystem usage + largest dirs, threshold alerting
+│   ├── user-mgmt.sh               # create/disable/enable/remove local users
+│   ├── service-health-check.sh    # check & kickstart-restart launchd jobs
+│   ├── update-and-patch.sh        # softwareupdate + brew wrapper, with logging
+│   ├── network-diagnostics.sh     # interfaces, routing, DNS, reachability
+│   ├── security-audit.sh          # SIP, Gatekeeper, FileVault, firewall, admin group
+│   ├── package-inventory.sh       # apps + Homebrew + pkg receipts, diff baselines
+│   ├── pending-reboot-check.sh    # detect whether a software update needs a restart
+│   ├── time-sync-check.sh         # network time sync status + offset threshold
+│   ├── backup-verify.sh           # assert a Time Machine backup exists and is recent
+│   ├── process-watchdog.sh        # flag high CPU/memory processes
+│   ├── listening-ports-audit.sh   # every listening TCP/UDP socket, flag vs. an allowlist
+│   ├── firewall-rules-dump.sh     # snapshot socketfilterfw + pf state
+│   ├── ssh-key-audit.sh           # authorized_keys: weak key types, missing comments, reused keys
+│   ├── memory-pressure-check.sh   # macOS memory-pressure metric + swap, threshold alerting
+│   ├── cert-expiry-check.sh       # TLS cert expiry, live host or local file
+│   ├── disk-health-check.sh       # S.M.A.R.T. status per physical disk
+│   └── config-snapshot.sh         # OS/security/network/launchd/profiles -> one text snapshot
 └── docs/
-    ├── README.md                              # index of everything below
-    ├── macos-cheatsheet.md                    # BSD vs. GNU traps, processes, disks
-    ├── launchd-cheatsheet.md                  # domains, bootstrap/bootout/kickstart, plists
-    ├── homebrew-cheatsheet.md                 # formulae/casks, brew services, Brewfiles
-    ├── security-and-privacy-reference.md      # SIP, Gatekeeper, FileVault, firewall, TCC
-    ├── new-mac-bootstrap-checklist.md         # day-0 procedure for a fresh Mac
+    ├── README.md                                    # index of everything below
+    ├── macos-cheatsheet.md                          # BSD vs. GNU traps, processes, disks
+    ├── launchd-cheatsheet.md                        # domains, bootstrap/bootout/kickstart, plists
+    ├── homebrew-cheatsheet.md                       # formulae/casks, brew services, Brewfiles
+    ├── diskutil-and-apfs-cheatsheet.md              # containers/volumes, space accounting, snapshots
+    ├── unified-logging-cheatsheet.md                # log show/stream predicates, crash reports
+    ├── security-and-privacy-reference.md            # SIP, Gatekeeper, FileVault, firewall, TCC
+    ├── packet-filter-and-firewall-reference.md      # socketfilterfw vs. pf
+    ├── time-machine-backup-reference.md             # how backups/snapshots work, and their limits
+    ├── new-mac-bootstrap-checklist.md               # day-0 procedure for a fresh Mac
+    ├── server-hardening-checklist.md                # accounts, exposure, security stack
+    ├── troubleshooting-guide.md                     # boot failures, panics, launchd mismatches
     └── glossary.md
 ```
 
@@ -71,8 +85,16 @@ chmod +x scripts/*.sh
 - `systemsetup`, `sntp` (both built in) for `time-sync-check.sh`
 - `tmutil` (built in) for `backup-verify.sh` — needs Full Disk Access
   granted to whatever process runs it, or it silently reports no backups
+- `lsof` (built in) for `listening-ports-audit.sh`
+- `pfctl` and `socketfilterfw` (both built in) for `firewall-rules-dump.sh`
+- `ssh-keygen` (built in) for `ssh-key-audit.sh`
+- `memory_pressure` (built in) for `memory-pressure-check.sh`
+- `openssl` (built in) for `cert-expiry-check.sh`
+- `diskutil` (built in) for `disk-health-check.sh`
+- `scutil`, `ioreg`, `profiles` (all built in) for `config-snapshot.sh`
 - Several scripts (`user-mgmt.sh`, install actions in `update-and-patch.sh`,
-  parts of `security-audit.sh`) need to run as root via `sudo`
+  `firewall-rules-dump.sh`, parts of `security-audit.sh` and
+  `listening-ports-audit.sh`) need to run as root via `sudo`
 
 ## Contributing
 
