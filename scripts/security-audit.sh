@@ -9,8 +9,13 @@
 # server-hardening-checklist.md for the reasoning behind each check and
 # how to fix what it flags.
 #
+# Needs root: socketfilterfw and systemsetup both refuse to run
+# unprivileged, and running this unprivileged would otherwise mean the
+# firewall and Remote Login checks silently misreport "off" from a
+# permission error rather than the actual state.
+#
 # Usage:
-#   ./security-audit.sh
+#   sudo ./security-audit.sh
 #
 # Options:
 #   -h   Show this help
@@ -30,41 +35,46 @@ while getopts ":h" opt; do
   esac
 done
 
+if [[ "$EUID" -ne 0 ]]; then
+  echo "This needs root — socketfilterfw and systemsetup both refuse to run unprivileged. Re-run with sudo." >&2
+  exit 1
+fi
+
 FLAGGED=0
 flag() { echo "FLAG: $1"; FLAGGED=1; }
 
 echo "=== System Integrity Protection (SIP) ==="
-sip_status="$(csrutil status 2>&1)"
+sip_status="$(csrutil status 2>&1 || true)"
 echo "$sip_status"
 echo "$sip_status" | grep -qi "enabled" || flag "SIP is not enabled."
 
 echo
 echo "=== Gatekeeper ==="
-gk_status="$(spctl --status 2>&1)"
+gk_status="$(spctl --status 2>&1 || true)"
 echo "$gk_status"
 echo "$gk_status" | grep -qi "assessments enabled" || flag "Gatekeeper assessments are disabled."
 
 echo
 echo "=== FileVault ==="
-fv_status="$(fdesetup status 2>&1)"
+fv_status="$(fdesetup status 2>&1 || true)"
 echo "$fv_status"
 echo "$fv_status" | grep -qi "FileVault is On" || flag "FileVault is not on."
 
 echo
 echo "=== Application firewall ==="
-fw_state="$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>&1)"
+fw_state="$(/usr/libexec/ApplicationFirewall/socketfilterfw --getglobalstate 2>&1 || true)"
 echo "$fw_state"
 echo "$fw_state" | grep -qi "enabled" || flag "Application firewall is disabled."
 
 echo
 echo "=== Remote login (SSH) ==="
-ssh_state="$(systemsetup -getremotelogin 2>&1)"
+ssh_state="$(systemsetup -getremotelogin 2>&1 || true)"
 echo "$ssh_state"
 echo "$ssh_state" | grep -qi "^Remote Login: On$" && flag "Remote Login (SSH) is on — confirm this is intentional."
 
 echo
 echo "=== Local admin group members ==="
-dseditgroup -o read admin 2>/dev/null | grep -A999 '^ users:' | tail -n +2 | sed 's/^/  /'
+dscl . -read /Groups/admin GroupMembership 2>/dev/null | cut -d: -f2- | tr -s ' ' '\n' | sed '/^$/d; s/^/  /' || echo "  (could not read admin group membership)"
 
 echo
 if [[ "$FLAGGED" -eq 1 ]]; then

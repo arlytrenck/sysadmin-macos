@@ -3,8 +3,12 @@
 # time-sync-check.sh — check whether network time sync is enabled and
 # which server it's using, and flag a large offset from that server.
 #
+# Needs root: systemsetup refuses every operation, including reads,
+# without it — run this unprivileged and it would misreport sync as
+# "off" from a permission error rather than the actual setting.
+#
 # Usage:
-#   ./time-sync-check.sh [-t 5]
+#   sudo ./time-sync-check.sh [-t 5]
 #
 # Options:
 #   -t   Offset threshold in seconds that triggers a non-zero exit
@@ -29,6 +33,11 @@ while getopts ":t:h" opt; do
     :) echo "Option -$OPTARG requires an argument" >&2; usage 1 ;;
   esac
 done
+
+if [[ "$EUID" -ne 0 ]]; then
+  echo "This needs root — systemsetup refuses to run unprivileged. Re-run with sudo." >&2
+  exit 1
+fi
 
 FLAGGED=0
 

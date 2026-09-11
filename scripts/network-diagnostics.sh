@@ -32,7 +32,7 @@ while getopts ":t:c:h" opt; do
 done
 
 echo "=== Network services (in network-preference order) ==="
-networksetup -listnetworkserviceorder | grep -E '^\([0-9]+\)'
+networksetup -listnetworkserviceorder 2>&1 | grep -E '^\([0-9]+\)' || echo "(none found)"
 
 echo
 echo "=== Active interfaces ==="
@@ -40,7 +40,7 @@ ifconfig -a | awk '
   /^[a-z]/ { iface=$1; sub(/:$/, "", iface); up=0 }
   /status: active/ { up=1 }
   /inet / && up { print iface, $0 }
-'
+' || true
 
 echo
 echo "=== Default route ==="
@@ -48,7 +48,7 @@ route -n get default 2>/dev/null || echo "No default route found."
 
 echo
 echo "=== DNS configuration ==="
-scutil --dns | grep -E 'nameserver\[[0-9]+\]|search domain' | sort -u
+scutil --dns 2>&1 | grep -E 'nameserver\[[0-9]+\]|search domain' | sort -u || echo "(none found)"
 
 echo
 echo "=== DNS resolution test: $TEST_HOST ==="
