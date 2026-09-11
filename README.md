@@ -92,9 +92,12 @@ chmod +x scripts/*.sh
 - `openssl` (built in) for `cert-expiry-check.sh`
 - `diskutil` (built in) for `disk-health-check.sh`
 - `scutil`, `ioreg`, `profiles` (all built in) for `config-snapshot.sh`
-- Several scripts (`user-mgmt.sh`, install actions in `update-and-patch.sh`,
-  `firewall-rules-dump.sh`, parts of `security-audit.sh` and
-  `listening-ports-audit.sh`) need to run as root via `sudo`
+- `security-audit.sh` and `time-sync-check.sh` need to run as root
+  outright — `socketfilterfw` and `systemsetup` both refuse to run
+  unprivileged, including for reads
+- Several other scripts (`user-mgmt.sh`, install actions in
+  `update-and-patch.sh`, `firewall-rules-dump.sh`, `listening-ports-audit.sh`
+  for full coverage) also need `sudo`
 
 ## Contributing
 
