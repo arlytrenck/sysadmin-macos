@@ -14,7 +14,8 @@
 #
 # Exit codes:
 #   0  free percentage at/above threshold
-#   2  free percentage below threshold
+#   2  free percentage below threshold, or memory_pressure's output
+#      couldn't be parsed (fails closed)
 
 set -euo pipefail
 
@@ -43,10 +44,12 @@ echo "=== Memory pressure ==="
 MP_OUT="$(memory_pressure 2>&1)"
 echo "$MP_OUT"
 
-FREE_PCT="$(echo "$MP_OUT" | grep "System-wide" | awk '{print $5}' | tr -d '%')"
-if [[ -z "$FREE_PCT" ]]; then
+# || true: with no matching line grep exits 1, and under pipefail that would
+# end the script here instead of reaching the message below.
+FREE_PCT="$(echo "$MP_OUT" | grep "System-wide" | awk '{print $5}' | tr -d '%' || true)"
+if [[ ! "$FREE_PCT" =~ ^[0-9]+$ ]]; then
   echo "Could not parse a free percentage from memory_pressure output."
-  exit 0
+  exit 2
 fi
 
 echo

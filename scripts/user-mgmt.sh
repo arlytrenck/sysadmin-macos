@@ -14,7 +14,7 @@
 #   sudo ./user-mgmt.sh -a create -u NAME [-f "Full Name"] [-A]
 #   sudo ./user-mgmt.sh -a disable -u NAME
 #   sudo ./user-mgmt.sh -a enable  -u NAME
-#   sudo ./user-mgmt.sh -a remove  -u NAME [-k]
+#   sudo ./user-mgmt.sh -a remove  -u NAME [-k] [-y]
 #        ./user-mgmt.sh -a list
 #
 # Options:
@@ -23,7 +23,12 @@
 #   -f   Full name, for create (default: same as username)
 #   -A   Make the new account an administrator, for create
 #   -k   Keep the home directory when removing (default: delete it)
+#   -y   Skip the confirmation prompt when removing (needed when there is
+#        no terminal, e.g. from MDM or cron)
 #   -h   Show this help
+#
+# remove refuses to delete the account running the script or the last
+# administrator, and otherwise asks you to retype the username first.
 #
 # Exit codes:
 #   0  success
@@ -37,16 +42,18 @@ TARGET_USER=""
 FULL_NAME=""
 MAKE_ADMIN=0
 KEEP_HOME=0
+ASSUME_YES=0
 
 usage() { sed -n '2,/^[^#]/p' "$0" | sed '1{/^#$/d;}; $d; s/^# \{0,1\}//'; exit "${1:-0}"; }
 
-while getopts ":a:u:f:Akh" opt; do
+while getopts ":a:u:f:Akyh" opt; do
   case "$opt" in
     a) ACTION="$OPTARG" ;;
     u) TARGET_USER="$OPTARG" ;;
     f) FULL_NAME="$OPTARG" ;;
     A) MAKE_ADMIN=1 ;;
     k) KEEP_HOME=1 ;;
+    y) ASSUME_YES=1 ;;
     h) usage 0 ;;
     \?) echo "Unknown option: -$OPTARG" >&2; usage 1 ;;
     :) echo "Option -$OPTARG requires an argument" >&2; usage 1 ;;
@@ -63,9 +70,30 @@ if [[ "$ACTION" != "list" && -z "$TARGET_USER" ]]; then
   usage 1
 fi
 
+if [[ "$ACTION" != "list" ]]; then
+  if [[ ! "$TARGET_USER" =~ ^[A-Za-z_][A-Za-z0-9._-]*$ ]]; then
+    echo "Invalid username '$TARGET_USER' (letters, digits, '.', '_' and '-'; can't start with a digit)" >&2
+    exit 1
+  fi
+  if [[ "$EUID" -ne 0 ]]; then
+    echo "This needs root — re-run with sudo." >&2
+    exit 1
+  fi
+fi
+
+user_exists() { dscl . -read "/Users/$1" RecordName >/dev/null 2>&1; }
+
+# Never lock out or delete the account that's running this. SUDO_USER is the
+# human behind the sudo; fall back to the console user for a bare root shell.
+CALLER="${SUDO_USER:-$(stat -f '%Su' /dev/console 2>/dev/null || true)}"
+
 case "$ACTION" in
   create)
-    [[ -z "$FULL_NAME" ]] && FULL_NAME="$TARGET_USER"
+    if user_exists "$TARGET_USER"; then
+      echo "User '$TARGET_USER' already exists." >&2
+      exit 2
+    fi
+    if [[ -z "$FULL_NAME" ]]; then FULL_NAME="$TARGET_USER"; fi
     echo "Creating user '$TARGET_USER' ($FULL_NAME)..."
     if [[ "$MAKE_ADMIN" -eq 1 ]]; then
       sysadminctl -addUser "$TARGET_USER" -fullName "$FULL_NAME" -admin interactive
@@ -77,8 +105,12 @@ case "$ACTION" in
     ;;
 
   disable)
-    if ! dscl . -read "/Users/$TARGET_USER" RecordName >/dev/null 2>&1; then
+    if ! user_exists "$TARGET_USER"; then
       echo "No such user: $TARGET_USER" >&2
+      exit 2
+    fi
+    if [[ "$TARGET_USER" == "$CALLER" ]]; then
+      echo "Refusing to disable '$TARGET_USER': that's the account running this." >&2
       exit 2
     fi
     echo "Disabling interactive login for '$TARGET_USER' (shell -> /usr/bin/false)..."
@@ -87,7 +119,7 @@ case "$ACTION" in
     ;;
 
   enable)
-    if ! dscl . -read "/Users/$TARGET_USER" RecordName >/dev/null 2>&1; then
+    if ! user_exists "$TARGET_USER"; then
       echo "No such user: $TARGET_USER" >&2
       exit 2
     fi
@@ -98,6 +130,39 @@ case "$ACTION" in
     ;;
 
   remove)
+    if ! user_exists "$TARGET_USER"; then
+      echo "No such user: $TARGET_USER" >&2
+      exit 2
+    fi
+    if [[ "$TARGET_USER" == "$CALLER" ]]; then
+      echo "Refusing to remove '$TARGET_USER': that's the account running this." >&2
+      exit 2
+    fi
+    # Removing the last administrator leaves the Mac with nobody who can
+    # manage it, so refuse that too.
+    if dseditgroup -o checkmember -m "$TARGET_USER" admin >/dev/null 2>&1; then
+      other_admins="$(dscl . -read /Groups/admin GroupMembership 2>/dev/null | cut -d: -f2- | tr -s ' ' '\n' | sed '/^$/d' | grep -Fvx -e root -e "$TARGET_USER" || true)"
+      if [[ -z "$other_admins" ]]; then
+        echo "Refusing to remove '$TARGET_USER': it is the last administrator." >&2
+        exit 2
+      fi
+    fi
+    if [[ "$ASSUME_YES" -ne 1 ]]; then
+      if [[ ! -t 0 ]]; then
+        echo "Removal needs confirmation and there is no terminal — pass -y to proceed unattended." >&2
+        exit 1
+      fi
+      if [[ "$KEEP_HOME" -eq 1 ]]; then
+        echo "This deletes the account '$TARGET_USER' (home directory kept)."
+      else
+        echo "This deletes the account '$TARGET_USER' AND its home directory."
+      fi
+      read -r -p "Type the username to confirm: " confirm
+      if [[ "$confirm" != "$TARGET_USER" ]]; then
+        echo "Not confirmed; nothing removed."
+        exit 1
+      fi
+    fi
     echo "Removing user '$TARGET_USER'..."
     if [[ "$KEEP_HOME" -eq 1 ]]; then
       sysadminctl -deleteUser "$TARGET_USER" -keepHome

@@ -36,10 +36,14 @@ networksetup -listnetworkserviceorder 2>&1 | grep -E '^\([0-9]+\)' || echo "(non
 
 echo
 echo "=== Active interfaces ==="
+# ifconfig prints "status: active" AFTER the inet lines, so the addresses
+# are held per interface and only printed once the status line is seen.
 ifconfig -a | awk '
-  /^[a-z]/ { iface=$1; sub(/:$/, "", iface); up=0 }
-  /status: active/ { up=1 }
-  /inet / && up { print iface, $0 }
+  function flush() { if (up && addrs != "") printf "%s", addrs; addrs = ""; up = 0 }
+  /^[a-z]/ { flush(); iface = $1; sub(/:$/, "", iface) }
+  /inet / { addrs = addrs iface " " $0 "\n" }
+  /status: active/ { up = 1 }
+  END { flush() }
 ' || true
 
 echo

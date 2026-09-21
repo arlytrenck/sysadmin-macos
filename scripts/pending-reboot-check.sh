@@ -3,9 +3,14 @@
 # pending-reboot-check.sh — detect whether a restart is needed to finish
 # applying macOS updates.
 #
-# softwareupdate flags each pending item with a trailing "[restart]" when
-# it requires one; this just checks for that marker rather than trying to
-# infer it from any other state.
+# softwareupdate marks each pending item that needs a restart: current
+# macOS prints "Action: restart" in the item's detail line, older releases
+# a trailing "[restart]". This checks for either marker rather than trying
+# to infer it from any other state.
+#
+# Note that this answers "would installing what's on offer need a
+# restart?" — macOS has no equivalent of a /var/run/reboot-required flag
+# for an update that is already installed and waiting on one.
 #
 # Usage:
 #   ./pending-reboot-check.sh
@@ -31,7 +36,7 @@ done
 LIST_OUTPUT="$(softwareupdate -l 2>&1 || true)"
 echo "$LIST_OUTPUT"
 
-if echo "$LIST_OUTPUT" | grep -q '\[restart\]'; then
+if echo "$LIST_OUTPUT" | grep -Eqi 'Action:[[:space:]]*restart|\[restart\]'; then
   echo
   echo "Restart required to finish applying one or more updates."
   exit 2

@@ -21,11 +21,11 @@ companions did. Not yet at their depth.
 sysadmin-macos/
 ├── scripts/
 │   ├── disk-usage-report.sh       # filesystem usage + largest dirs, threshold alerting
-│   ├── user-mgmt.sh               # create/disable/enable/remove local users
+│   ├── user-mgmt.sh               # create/disable/enable/remove local users (guarded, confirmed)
 │   ├── service-health-check.sh    # check & kickstart-restart launchd jobs
 │   ├── update-and-patch.sh        # softwareupdate + brew wrapper, with logging
 │   ├── network-diagnostics.sh     # interfaces, routing, DNS, reachability
-│   ├── security-audit.sh          # SIP, Gatekeeper, FileVault, firewall, admin group
+│   ├── security-audit.sh          # SIP, Gatekeeper, FileVault, firewall, sharing, login window, updates, admin group
 │   ├── package-inventory.sh       # apps + Homebrew + pkg receipts, diff baselines
 │   ├── pending-reboot-check.sh    # detect whether a software update needs a restart
 │   ├── time-sync-check.sh         # network time sync status + offset threshold

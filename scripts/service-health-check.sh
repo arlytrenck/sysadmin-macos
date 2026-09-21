@@ -53,7 +53,9 @@ done
 if [[ "$DO_LIST" -eq 1 ]]; then
   echo "=== Loaded jobs matching '${FILTER:-<all>}' ==="
   if [[ -n "$FILTER" ]]; then
-    launchctl list | head -n1
+    # sed, not head: an early-exiting head can SIGPIPE launchctl, which
+    # pipefail would turn into a script exit.
+    launchctl list | sed -n '1p'
     launchctl list | tail -n +2 | grep -i -- "$FILTER" || echo "(no matches)"
   else
     launchctl list
@@ -70,15 +72,15 @@ FAILED=0
 IFS=',' read -ra LABEL_ARRAY <<< "$LABELS"
 for label in "${LABEL_ARRAY[@]}"; do
   target="${DOMAIN}/${label}"
-  if ! launchctl print "$target" >/tmp/svc-health-check.$$ 2>&1; then
+  if ! print_out="$(launchctl print "$target" 2>&1)"; then
     echo "NOT LOADED: $target"
     FAILED=1
-    rm -f "/tmp/svc-health-check.$$"
     continue
   fi
 
-  state="$(grep -m1 'state = ' "/tmp/svc-health-check.$$" | awk -F'= ' '{print $2}')"
-  rm -f "/tmp/svc-health-check.$$"
+  # || true: a job with no "state =" line makes grep exit 1, and pipefail
+  # would end the whole run on the first such job.
+  state="$(echo "$print_out" | grep -m1 'state = ' | awk -F'= ' '{print $2}' || true)"
 
   if [[ "$state" == "running" ]]; then
     echo "OK: $target (state = running)"
@@ -92,14 +94,14 @@ for label in "${LABEL_ARRAY[@]}"; do
     echo "  Kickstarting $target..."
     if launchctl kickstart -k "$target"; then
       sleep 2
-      new_state="$(launchctl print "$target" 2>/dev/null | grep -m1 'state = ' | awk -F'= ' '{print $2}')"
+      new_state="$(launchctl print "$target" 2>/dev/null | grep -m1 'state = ' | awk -F'= ' '{print $2}' || true)"
       echo "  New state: ${new_state:-unknown}"
-      [[ "$new_state" == "running" ]] && RECOVERED=1
+      if [[ "$new_state" == "running" ]]; then RECOVERED=1; fi
     else
       echo "  Kickstart failed."
     fi
   fi
-  [[ "$RECOVERED" -eq 0 ]] && FAILED=1
+  if [[ "$RECOVERED" -eq 0 ]]; then FAILED=1; fi
 done
 
 if [[ "$FAILED" -eq 1 ]]; then
