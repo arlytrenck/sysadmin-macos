@@ -30,12 +30,28 @@ while getopts ":a:h" opt; do
   esac
 done
 
+# lsof only shows other users' sockets to root. Use root when available, but
+# say so when it isn't, so an allowlist check on partial data isn't mistaken
+# for a clean bill of health.
+if [[ "$EUID" -eq 0 ]]; then
+  LSOF=(lsof)
+elif sudo -n true 2>/dev/null; then
+  LSOF=(sudo -n lsof)
+else
+  LSOF=(lsof)
+  echo "Heads up: not root and no passwordless sudo — only this user's sockets are visible." >&2
+fi
+
+# lsof exits 1 when it finds nothing, hence the || true on each capture.
+TCP_OUT="$("${LSOF[@]}" -nP -iTCP -sTCP:LISTEN 2>/dev/null || true)"
+UDP_OUT="$("${LSOF[@]}" -nP -iUDP 2>/dev/null || true)"
+
 echo "=== Listening TCP sockets ==="
-sudo -n lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null || lsof -nP -iTCP -sTCP:LISTEN
+echo "$TCP_OUT"
 
 echo
 echo "=== Bound UDP sockets ==="
-sudo -n lsof -nP -iUDP 2>/dev/null || lsof -nP -iUDP
+echo "$UDP_OUT"
 
 if [[ -z "$ALLOWLIST" ]]; then
   echo
@@ -58,7 +74,7 @@ while read -r port proc pid; do
     echo "FLAG: port $port not on allowlist (pid=$pid, $proc)"
     FLAGGED=1
   fi
-done < <(lsof -nP -iTCP -sTCP:LISTEN 2>/dev/null | tail -n +2 | awk '{n=split($9,a,":"); print a[n], $1, $2}' | sort -un)
+done < <(echo "$TCP_OUT" | tail -n +2 | awk 'NF {n=split($9,a,":"); print a[n], $1, $2}' | sort -un)
 
 if [[ "$FLAGGED" -eq 1 ]]; then
   exit 2

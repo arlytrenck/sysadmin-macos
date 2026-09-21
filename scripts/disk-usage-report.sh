@@ -36,27 +36,39 @@ while getopts ":p:n:t:h" opt; do
   esac
 done
 
+# Rows worth showing and checking: drop the header, the pseudo filesystems
+# (devfs and the autofs "map" entries both report a permanent 100%), and the
+# synthetic APFS system volumes.
+real_filesystems() {
+  df -hP | awk 'NR > 1 && $1 != "devfs" && $1 != "map" && $0 !~ /\/System\/Volumes\/(Preboot|VM|Update|xarts|iSCPreboot|Hardware)/'
+}
+
 echo "=== Filesystem usage ==="
-df -hP | grep -Ev '/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware)'
+df -hP | head -n 1
+real_filesystems
 
 echo
 echo "=== Top $TOP_N largest directories under $SCAN_PATH (depth 2) ==="
-# BSD du has no --max-depth; -d is the equivalent.
+# BSD du has no --max-depth; -d is the equivalent. `|| true`: du exits 1 on
+# every unreadable (TCC-protected) directory, and head can close the pipe
+# early; either would trip pipefail and end the script before the threshold
+# check below.
 du -h -d 2 -x "$SCAN_PATH" 2>/dev/null \
   | sort -rh \
-  | head -n "$TOP_N"
+  | sed -n "1,${TOP_N}p" || true
 
 echo
-echo "=== Threshold check (>${THRESHOLD}%) ==="
+echo "=== Threshold check (>=${THRESHOLD}%) ==="
 OVER=0
-while read -r line; do
-  PCT="$(echo "$line" | awk '{print $5}' | tr -d '%')"
-  MOUNT="$(echo "$line" | awk '{print $6}')"
-  if [[ "$PCT" =~ ^[0-9]+$ ]] && (( PCT >= THRESHOLD )); then
-    echo "WARNING: $MOUNT is at ${PCT}% (threshold: ${THRESHOLD}%)"
+while read -r pct mount; do
+  pct="${pct%\%}"
+  if [[ "$pct" =~ ^[0-9]+$ ]] && (( pct >= THRESHOLD )); then
+    echo "WARNING: $mount is at ${pct}% (threshold: ${THRESHOLD}%)"
     OVER=1
   fi
-done < <(df -hP | tail -n +2 | grep -Ev '/System/Volumes/(Preboot|VM|Update|xarts|iSCPreboot|Hardware)')
+# Capacity is field 5; the mount point is everything from field 6 on, which
+# keeps volume names containing spaces intact.
+done < <(real_filesystems | awk '{m=$6; for (i=7;i<=NF;i++) m=m " " $i; print $5, m}')
 
 if (( OVER )); then
   echo "One or more filesystems exceeded the threshold."

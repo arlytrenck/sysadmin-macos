@@ -45,7 +45,11 @@ done
 
 log() {
   echo "$1"
-  [[ -n "$LOG_FILE" ]] && echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
+  # An if, not `[[ ]] && ...`: with no -L the test is false, the function
+  # returns 1, and set -e would kill the script on the very first log call.
+  if [[ -n "$LOG_FILE" ]]; then
+    echo "$(date '+%Y-%m-%d %H:%M:%S') $1" >> "$LOG_FILE"
+  fi
 }
 
 RESULT=0

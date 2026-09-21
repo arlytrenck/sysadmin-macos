@@ -17,7 +17,8 @@
 #
 # Exit codes:
 #   0  sync enabled and offset within threshold
-#   2  sync disabled, or offset exceeds threshold, or sntp failed
+#   2  sync disabled, offset exceeds threshold, sntp failed, or the
+#      setting couldn't be read (fails closed)
 
 set -euo pipefail
 
@@ -46,6 +47,15 @@ USING="$(systemsetup -getusingnetworktime 2>&1 || true)"
 echo "$NETTIME"
 echo "$USING"
 
+# Since Monterey, systemsetup can refuse even as root unless the parent app
+# has Full Disk Access. Treat an unreadable answer as a failure of the check,
+# not as "sync is off".
+if ! echo "$USING" | grep -Eqi '^Network Time: (On|Off)$'; then
+  echo "Could not read the network time setting (systemsetup said the above)." >&2
+  echo "Grant Full Disk Access to the terminal or job runner and retry." >&2
+  exit 2
+fi
+
 if ! echo "$USING" | grep -qi "^Network Time: On$"; then
   echo "FLAG: Network time sync is off."
   FLAGGED=1
@@ -58,7 +68,9 @@ if [[ -n "$SERVER" ]] && command -v sntp >/dev/null 2>&1; then
   SNTP_OUT="$(sntp "$SERVER" 2>&1 || true)"
   echo "$SNTP_OUT"
   # sntp prints a leading signed offset in seconds, e.g. "+0.012345 ...".
-  OFFSET="$(echo "$SNTP_OUT" | grep -Eo '^[+-][0-9]+\.[0-9]+' | head -n1)"
+  # || true: grep finding nothing (sntp timed out, no network) must reach the
+  # message below, not abort the script under pipefail.
+  OFFSET="$(echo "$SNTP_OUT" | grep -Eo '^[+-][0-9]+\.[0-9]+' | head -n1 || true)"
   if [[ -n "$OFFSET" ]]; then
     ABS_OFFSET="${OFFSET#-}"
     ABS_OFFSET="${ABS_OFFSET#+}"
@@ -67,7 +79,8 @@ if [[ -n "$SERVER" ]] && command -v sntp >/dev/null 2>&1; then
       FLAGGED=1
     fi
   else
-    echo "Could not parse an offset from sntp output."
+    echo "FLAG: could not parse an offset from sntp output — server unreachable?"
+    FLAGGED=1
   fi
 fi
 

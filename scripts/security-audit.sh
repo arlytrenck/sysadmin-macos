@@ -2,8 +2,9 @@
 #
 # security-audit.sh — snapshot the state of the main macOS security
 # controls (SIP, Gatekeeper, FileVault, application firewall, remote
-# login) and the local admin group, and flag anything off that's usually
-# expected to be on.
+# login, screen sharing, guest/auto-login, automatic updates) and the
+# local admin group, and flag anything off that's usually expected to be
+# on (or on that's usually expected to be off).
 #
 # This reports state; it does not change anything. Pair it with
 # server-hardening-checklist.md for the reasoning behind each check and
@@ -47,6 +48,9 @@ echo "=== System Integrity Protection (SIP) ==="
 sip_status="$(csrutil status 2>&1 || true)"
 echo "$sip_status"
 echo "$sip_status" | grep -qi "enabled" || flag "SIP is not enabled."
+# "enabled (Custom Configuration)" still matches the check above, but means
+# some protections were switched off individually.
+echo "$sip_status" | grep -qi "custom configuration" && flag "SIP has a custom configuration — some protections are off."
 
 echo
 echo "=== Gatekeeper ==="
@@ -70,7 +74,42 @@ echo
 echo "=== Remote login (SSH) ==="
 ssh_state="$(systemsetup -getremotelogin 2>&1 || true)"
 echo "$ssh_state"
-echo "$ssh_state" | grep -qi "^Remote Login: On$" && flag "Remote Login (SSH) is on — confirm this is intentional."
+if echo "$ssh_state" | grep -Eqi '^Remote Login: (On|Off)$'; then
+  echo "$ssh_state" | grep -qi "^Remote Login: On$" && flag "Remote Login (SSH) is on — confirm this is intentional."
+else
+  # Since Monterey systemsetup can refuse even as root without Full Disk
+  # Access. Ask launchd instead: sshd is only loaded while Remote Login is on.
+  echo "(systemsetup couldn't answer — checking launchd instead)"
+  if launchctl print system/com.openssh.sshd >/dev/null 2>&1; then
+    flag "Remote Login (SSH) is on — confirm this is intentional."
+  else
+    echo "sshd is not loaded."
+  fi
+fi
+
+echo
+echo "=== Screen Sharing ==="
+if launchctl print-disabled system 2>/dev/null | grep -q '"com.apple.screensharing" => enabled'; then
+  flag "Screen Sharing is enabled — confirm this is intentional."
+else
+  echo "Screen Sharing is not enabled."
+fi
+
+echo
+echo "=== Login window ==="
+guest="$(defaults read /Library/Preferences/com.apple.loginwindow GuestEnabled 2>/dev/null || echo 0)"
+[[ "$guest" == "1" ]] && flag "Guest account is enabled." || echo "Guest account: off"
+autologin="$(defaults read /Library/Preferences/com.apple.loginwindow autoLoginUser 2>/dev/null || true)"
+[[ -n "$autologin" ]] && flag "Automatic login is set for '$autologin'." || echo "Automatic login: off"
+
+echo
+echo "=== Automatic updates ==="
+# An absent key means the default, which is on, so only an explicit 0 flags.
+for key in AutomaticCheckEnabled CriticalUpdateInstall ConfigDataInstall; do
+  val="$(defaults read /Library/Preferences/com.apple.SoftwareUpdate "$key" 2>/dev/null || echo "default")"
+  echo "$key: $val"
+  [[ "$val" == "0" ]] && flag "Software Update setting $key is off."
+done
 
 echo
 echo "=== Local admin group members ==="
