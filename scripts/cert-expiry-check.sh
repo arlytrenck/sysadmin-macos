@@ -42,14 +42,16 @@ if [[ -z "$TARGET_HOST" && -z "$CERT_FILE" ]]; then
 fi
 
 if [[ -n "$CERT_FILE" ]]; then
-  ENDDATE_RAW="$(openssl x509 -enddate -noout -in "$CERT_FILE" | cut -d= -f2)"
+  # || true on both reads: under pipefail an unreadable file or a refused
+  # connection would otherwise abort here, before the friendly error below.
+  ENDDATE_RAW="$(openssl x509 -enddate -noout -in "$CERT_FILE" 2>/dev/null | cut -d= -f2 || true)"
   SUBJECT="$CERT_FILE"
 else
   HOST="${TARGET_HOST%%:*}"
   PORT="443"
   [[ "$TARGET_HOST" == *:* ]] && PORT="${TARGET_HOST##*:}"
   ENDDATE_RAW="$(echo | openssl s_client -servername "$HOST" -connect "$HOST:$PORT" 2>/dev/null \
-    | openssl x509 -enddate -noout | cut -d= -f2)"
+    | openssl x509 -enddate -noout 2>/dev/null | cut -d= -f2 || true)"
   SUBJECT="$TARGET_HOST"
 fi
 
@@ -64,15 +66,17 @@ echo "Expires: $ENDDATE_RAW"
 ENDDATE_CLEAN="${ENDDATE_RAW% GMT}"
 EXPIRY_EPOCH="$(TZ=UTC date -j -f '%b %d %T %Y' "$ENDDATE_CLEAN" '+%s' 2>/dev/null || true)"
 if [[ -z "$EXPIRY_EPOCH" ]]; then
-  echo "Could not parse the expiry date; skipping the days-remaining check."
-  exit 0
+  echo "Could not parse the expiry date; can't verify how long is left." >&2
+  exit 2
 fi
 
 NOW_EPOCH="$(date '+%s')"
 DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
 echo "Days remaining: $DAYS_LEFT"
 
-if (( DAYS_LEFT < 0 )); then
+# Test the epochs, not DAYS_LEFT: integer division truncates toward zero, so a
+# cert that expired 12 hours ago would read as 0 days left rather than negative.
+if (( EXPIRY_EPOCH <= NOW_EPOCH )); then
   echo "Certificate has already expired."
   exit 2
 fi

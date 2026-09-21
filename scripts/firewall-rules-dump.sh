@@ -51,11 +51,11 @@ dump() {
   echo
   echo "## pf (packet filter)"
   echo "### Loaded rules"
-  pfctl -s rules 2>&1
+  pfctl -s rules 2>&1 || true
   echo "### NAT rules"
-  pfctl -s nat 2>&1
+  pfctl -s nat 2>&1 || true
   echo "### Active anchors"
-  pfctl -s Anchors 2>&1
+  pfctl -s Anchors 2>&1 || true
 }
 
 if [[ -n "$OUT_FILE" ]]; then

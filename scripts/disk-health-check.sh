@@ -34,17 +34,27 @@ while read -r disk; do
   name="$(echo "$info" | awk -F':  *' '/Device \/ Media Name:/{print $2}')"
   smart="$(echo "$info" | awk -F':  *' '/SMART Status:/{print $2}')"
 
-  if [[ -z "$smart" ]]; then
-    echo "$disk (${name:-unknown}): SMART not reported (common for external/virtual disks and some NVMe)"
-    continue
-  fi
-
-  echo "$disk (${name:-unknown}): SMART Status: $smart"
-  if [[ "$smart" != "Verified" ]]; then
-    echo "FLAG: $disk reports '$smart'"
-    FLAGGED=1
-  fi
-done < <(diskutil list | awk '/^\/dev\/disk[0-9]+ \(/{print $1}')
+  case "$smart" in
+    "")
+      echo "$disk (${name:-unknown}): SMART not reported (common for external/virtual disks and some NVMe)"
+      ;;
+    "Not Supported"|"Not Available")
+      # diskutil says this for most USB enclosures and card readers; it means
+      # "can't tell", not "failing".
+      echo "$disk (${name:-unknown}): SMART Status: $smart (skipped)"
+      ;;
+    Verified)
+      echo "$disk (${name:-unknown}): SMART Status: Verified"
+      ;;
+    *)
+      echo "$disk (${name:-unknown}): SMART Status: $smart"
+      echo "FLAG: $disk reports '$smart'"
+      FLAGGED=1
+      ;;
+  esac
+# `physical` skips APFS synthesized containers and mounted disk images, which
+# have no SMART data of their own.
+done < <(diskutil list physical 2>/dev/null | awk '/^\/dev\/disk[0-9]+ \(/{print $1}')
 
 if [[ "$FLAGGED" -eq 1 ]]; then
   exit 2

@@ -18,7 +18,8 @@
 #
 # Exit codes:
 #   0  a backup exists and is within the age threshold
-#   2  no backup found, or the latest one is too old
+#   2  no backup found, the latest one is too old, or its age can't be
+#      determined (fails closed)
 
 set -euo pipefail
 
@@ -48,17 +49,20 @@ fi
 echo
 echo "Latest backup: $LATEST"
 
-# The backup's directory name ends in a UTC timestamp: YYYY-MM-DD-HHMMSS.
-STAMP="$(basename "$LATEST" | grep -Eo '[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}$' || true)"
+# The backup's directory name carries a LOCAL-time stamp, YYYY-MM-DD-HHMMSS.
+# APFS backups append ".backup" to it, so don't anchor the match to the end
+# of the name. An assertion script has to fail closed: if the age can't be
+# worked out, that's a failure, not a pass.
+STAMP="$(basename "$LATEST" | grep -Eo '[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{6}' | head -n1 || true)"
 if [[ -z "$STAMP" ]]; then
-  echo "Could not parse a timestamp from the backup name; skipping age check."
-  exit 0
+  echo "Could not parse a timestamp from the backup name; can't verify its age."
+  exit 2
 fi
 
-BACKUP_EPOCH="$(TZ=UTC date -j -f '%Y-%m-%d-%H%M%S' "$STAMP" '+%s' 2>/dev/null || true)"
+BACKUP_EPOCH="$(date -j -f '%Y-%m-%d-%H%M%S' "$STAMP" '+%s' 2>/dev/null || true)"
 if [[ -z "$BACKUP_EPOCH" ]]; then
-  echo "Could not parse the backup timestamp ($STAMP); skipping age check."
-  exit 0
+  echo "Could not parse the backup timestamp ($STAMP); can't verify its age."
+  exit 2
 fi
 
 NOW_EPOCH="$(date '+%s')"

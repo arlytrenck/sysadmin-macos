@@ -35,11 +35,13 @@ while getopts ":c:m:n:h" opt; do
 done
 
 echo "=== Top $TOP_N by CPU ==="
-ps -Ao pid,pcpu,pmem,comm -r | head -n $((TOP_N + 1))
+# sed rather than head: head exits early, ps can then die of SIGPIPE, and
+# pipefail turns that into a script exit before the threshold check runs.
+ps -Ao pid,pcpu,pmem,comm -r | sed -n "1,$((TOP_N + 1))p"
 
 echo
 echo "=== Top $TOP_N by memory ==="
-ps -Ao pid,pcpu,pmem,comm -m | head -n $((TOP_N + 1))
+ps -Ao pid,pcpu,pmem,comm -m | sed -n "1,$((TOP_N + 1))p"
 
 echo
 echo "=== Threshold check (CPU > ${CPU_THRESHOLD}%, mem > ${MEM_THRESHOLD}%) ==="

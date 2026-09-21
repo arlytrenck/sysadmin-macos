@@ -59,11 +59,13 @@ snapshot() {
   echo "## Network"
   networksetup -listallnetworkservices 2>/dev/null | tail -n +2
   echo "-- DNS --"
-  scutil --dns 2>/dev/null | grep -E 'nameserver\[[0-9]+\]' | sort -u
+  scutil --dns 2>/dev/null | grep -E 'nameserver\[[0-9]+\]' | sort -u || true
 
   echo
-  echo "## launchd"
-  echo "Loaded jobs: $(launchctl list | tail -n +2 | wc -l | tr -d ' ')"
+  echo "## launchd (third-party jobs loaded in this domain)"
+  # A raw job count moves on its own every few minutes and drowns out real
+  # drift; the non-Apple labels are the part an admin actually changes.
+  launchctl list 2>/dev/null | awk 'NR>1 && $3 !~ /^com\.apple\./ && $3 !~ /^application\./ && $3 !~ /^0x/ {print $3}' | sort -u || true
 
   echo
   echo "## Configuration profiles (MDM / manual)"
