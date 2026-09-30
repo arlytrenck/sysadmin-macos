@@ -12,8 +12,7 @@ cover the same ground for Linux and Windows Server.
 
 ## Status
 
-Early days — growing incrementally the same way the Linux and Windows
-companions did. Not yet at their depth.
+Growing incrementally the same way the Linux and Windows companions did.
 
 ## Layout
 
